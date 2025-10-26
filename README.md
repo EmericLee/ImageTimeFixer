@@ -3,13 +3,20 @@
 **版本**：0.5.0
 **更新时间**：2024-12-01
 
+- **主要开发者**：disminde.lee limingrui 
+- **邮箱**：2714845535@qq.com kometo@gmail.com
+- **GitHub**：https://github.com/disminde
+- 此代码库经disminde.lee limingrui 同意上传，转发或修改请联系开发者
+
 ## 项目概述
 
 这是一个Android平台的应用程序，能够自动扫描设备上的所有图片文件，并根据图片的EXIF信息修正文件的创建时间和修改时间，如果没有EXIF相关信息，将通过文件名称综合分析后推测文件形成时间。
 当我们从不同设备导入图片或者备份恢复图片时，文件的时间戳常常会丢失原始的拍摄时间，这个应用可以帮助恢复图片的正确时间信息。
 
 
-![screenshot.png](app/res/ScreenShot.png)    
+<div align="center">
+  <img src="app/res/ScreenShot.png" width="300px" alt="screenshot.png">
+</div>
 
 ## 功能特点
 
@@ -49,9 +56,7 @@
 
 本项目采用MIT许可证
 
-- **主要开发者**：disminde.lee limingrui emeric
-- **邮箱**：2714845535@qq.com kometo@gmail.com
-- **GitHub**：https://github.com/disminde
+
 
 
 
