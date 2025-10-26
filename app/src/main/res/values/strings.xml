@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">图片时间修正器</string>
+    <string name="btn_scan">扫描并修正图片时间</string>
+    <string name="btn_stop">停止扫描</string>
+    <string name="status_scanning">正在扫描...</string>
+    <string name="status_idle">准备就绪：全盘扫描并修复.jpg/.jpeg/.png/.heic/.webp图片文件的时间</string>
+    <string name="status_completed">扫描完成</string>
+    <string name="status_error">扫描出错</string>
+    <string name="text_total_count">文件梳理: %d</string>
+    <string name="text_scanned_count">已扫描: %d</string>
+    <string name="text_fixed_count">已修正: %d</string>
+    <string name="text_summary">文件梳理: %d 张，已扫描: %d 张，已修正: %d 张</string>
+    <string name="title_permission">请求存储权限</string>
+    <string name="message_permission">需要存储权限来访问和修改图片文件</string>
+    <string name="btn_permission_allow">允许</string>
+    <string name="btn_permission_deny">拒绝</string>
+    <string name="notification_scan_started">扫描已开始</string>
+    <string name="notification_scan_progress">正在扫描图片 %d/%d</string>
+    <string name="notification_scan_completed">扫描完成</string>
+</resources>

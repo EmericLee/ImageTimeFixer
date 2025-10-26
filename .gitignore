@@ -1,0 +1,58 @@
+# Built application files
+*.apk
+*.ap_*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+build/
+.idea/
+.gradle/
+local.properties
+*.iml
+*.hprof
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Android Studio
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/gradle.xml
+.idea/assetWizardSettings.xml
+.idea/dictionaries
+.idea/libraries
+.idea/caches
+
+# External native build folder generated in Android Studio 2.2 and later
+.externalNativeBuild
+
+# Gradle build output
+build/
+gradle-app.setting
+
+# Local History for Visual Studio Code
+.history/
+
+# Windows folder/file thumbnail cache
+Thumbs.db
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
