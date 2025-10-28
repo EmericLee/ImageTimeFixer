@@ -25,6 +25,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -40,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import com.imagefixer.app.utils.LogUtils;
+import com.imagefixer.app.utils.VersionUtils;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -60,6 +62,18 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView scrollViewFiles;
 
     private boolean isScanning = false;
+
+    /**
+     * 显示版本信息
+     */
+    private void showVersionInfo() {
+        String versionInfo = VersionUtils.getFullVersionInfo(this);
+        TextView textViewVersion = findViewById(R.id.textView_version);
+        if (textViewVersion != null) {
+            textViewVersion.setText(versionInfo);
+        }
+        LogUtils.d("MainActivity", "当前版本: " + versionInfo);
+    }
 
     private BroadcastReceiver scanReceiver = new BroadcastReceiver() {
         @Override
@@ -99,6 +113,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // 显示版本信息
+        showVersionInfo();
+        
         // 初始化日志工具类
         LogUtils.init(this);
 
@@ -114,11 +131,16 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         // 注册广播接收器，添加RECEIVER_NOT_EXPORTED标志以适应Android 12+的要求
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_PROGRESS), Context.RECEIVER_NOT_EXPORTED);
-            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_COMPLETED), Context.RECEIVER_NOT_EXPORTED);
-            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_ERROR), Context.RECEIVER_NOT_EXPORTED);
-            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_FILE_INFO_UPDATE), Context.RECEIVER_NOT_EXPORTED);
-            registerReceiver(scanReceiver, new IntentFilter(LogUtils.ACTION_LOG_MESSAGE), Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_PROGRESS),
+                    Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_COMPLETED),
+                    Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_ERROR),
+                    Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_FILE_INFO_UPDATE),
+                    Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(scanReceiver, new IntentFilter(LogUtils.ACTION_LOG_MESSAGE),
+                    Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_PROGRESS));
             registerReceiver(scanReceiver, new IntentFilter(ScanService.ACTION_SCAN_COMPLETED));
@@ -144,13 +166,9 @@ public class MainActivity extends AppCompatActivity {
         textViewFixedCount = findViewById(R.id.textView_fixed_count);
         progressBar = findViewById(R.id.progressBar);
         buttonLog = findViewById(R.id.button_log); // 初始化日志按钮
-        
+
         scrollViewFiles = findViewById(R.id.scrollView_files);
         textViewFileList = findViewById(R.id.textView_file_list);
-
-        // 清空显示内容
-        textViewFileList.setText("");
-        strLogBuilder.setLength(0); // 清空日志
 
         // 初始化计数器显示
         textViewTotalCount.setText(getString(R.string.text_total_count, 0));
@@ -174,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
                 stopScan();
             }
         });
-        
+
         // 为日志滚动容器添加点击放大功能
         buttonLog.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -183,18 +201,18 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-    
+
     /**
      * 在全屏对话框中显示日志内容
      */
     private void showLogInFullScreen() {
         // 获取当前日志内容
         String logContent = strLogBuilder.toString();
-        
+
         // 创建一个新的ScrollView和TextView用于全屏显示
         ScrollView fullScreenScrollView = new ScrollView(this);
         TextView fullScreenTextView = new TextView(this);
-        
+
         // 设置文本视图的属性
         fullScreenTextView.setText(logContent); // 直接设置字符串内容
         fullScreenTextView.setTextSize(14); // 设置合适的字体大小
@@ -205,36 +223,36 @@ public class MainActivity extends AppCompatActivity {
         fullScreenTextView.setSingleLine(false); // 允许多行显示
         fullScreenTextView.setEllipsize(null); // 不截断文本
         fullScreenTextView.setMovementMethod(null); // 移除任何可能干扰的移动方法
-        
+
         // 设置背景色
         // fullScreenScrollView.setBackgroundColor(getResources().getColor(android.R.color.background_dark));
-        
+
         // 将文本视图添加到滚动视图中
         fullScreenScrollView.addView(fullScreenTextView);
-        
+
         // 创建对话框
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("日志详情")
-               .setView(fullScreenScrollView)
-               .setPositiveButton("关闭", new DialogInterface.OnClickListener() {
-                   @Override
-                   public void onClick(DialogInterface dialog, int which) {
-                       dialog.dismiss();
-                   }
-               });
-        
+                .setView(fullScreenScrollView)
+                .setPositiveButton("关闭", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                });
+
         // 创建并显示对话框
         AlertDialog dialog = builder.create();
-        
+
         // 设置对话框全屏显示
         dialog.show();
-        
+
         // 获取对话框的窗口并设置其布局参数，使其几乎充满屏幕
         dialog.getWindow().setLayout(
-            (int) (getResources().getDisplayMetrics().widthPixels * 0.95), // 宽度为屏幕的95%
-            (int) (getResources().getDisplayMetrics().heightPixels * 0.9) // 高度为屏幕的90%
+                (int) (getResources().getDisplayMetrics().widthPixels * 0.95), // 宽度为屏幕的95%
+                (int) (getResources().getDisplayMetrics().heightPixels * 0.9) // 高度为屏幕的90%
         );
-        
+
         // 滚动到最新内容
         fullScreenScrollView.post(new Runnable() {
             @Override
@@ -305,6 +323,9 @@ public class MainActivity extends AppCompatActivity {
         isScanning = true;
         updateUIState(true);
 
+        textViewFileList.setText(""); // 清空显示内容
+        strLogBuilder.setLength(0); // 清空日志
+
         // 启动扫描服务
         Intent intent = new Intent(this, ScanService.class);
         startService(intent);
@@ -369,7 +390,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private void updateLogView(String message, String level) {
 
-
         // 为不同级别的日志添加不同的前缀和颜色
         String prefix = "";
         switch (level) {
@@ -400,13 +420,13 @@ public class MainActivity extends AppCompatActivity {
 
         // // 自动滚动到最新内容
         // textViewLog.post(new Runnable() {
-        //     @Override
-        //     public void run() {
-        //         // 确保在UI线程执行滚动操作
-        //         if (scrollViewLog != null) {
-        //             scrollViewLog.fullScroll(ScrollView.FOCUS_DOWN);
-        //         }
-        //     }
+        // @Override
+        // public void run() {
+        // // 确保在UI线程执行滚动操作
+        // if (scrollViewLog != null) {
+        // scrollViewLog.fullScroll(ScrollView.FOCUS_DOWN);
+        // }
+        // }
         // });
 
     }

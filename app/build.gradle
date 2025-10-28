@@ -2,16 +2,109 @@ plugins {
     id 'com.android.application'
 }
 
+// 版本管理相关逻辑 - 简化版本管理，仅保留versionName，自动从versionName生成versionCode
+
+// 读取版本文件，获取当前版本信息
+def readVersionFile() {
+    def versionFile = file('version.properties')
+    if (!versionFile.exists()) {
+        // 如果版本文件不存在，创建默认版本信息（只存储versionName）
+        versionFile.parentFile.mkdirs()
+        versionFile.withWriter { writer ->
+            writer.writeLine 'versionName=1.0.0'
+        }
+    }
+    
+    def versionProps = new Properties()
+    versionFile.withReader { reader ->
+        versionProps.load(reader)
+    }
+    return versionProps
+}
+
+// 写入更新后的版本信息到文件
+def writeVersionFile(Properties props) {
+    def versionFile = file('version.properties')
+    versionFile.withWriter { writer ->
+        props.store(writer, 'App Version Information')
+    }
+}
+
+// 从versionName自动生成versionCode
+// 格式: major.minor.patch -> major*10000 + minor*100 + patch
+def generateVersionCode(String versionName) {
+    def parts = versionName.tokenize('.')
+    def major = parts.size() > 0 ? parts[0] as int : 0
+    def minor = parts.size() > 1 ? parts[1] as int : 0
+    def patch = parts.size() > 2 ? parts[2] as int : 0
+    
+    // 限制各部分的最大值，确保不会溢出
+    major = Math.min(major, 99)
+    minor = Math.min(minor, 99)
+    patch = Math.min(patch, 99)
+    
+    return major * 10000 + minor * 100 + patch
+}
+
+// 获取下一个版本名称
+def getNextVersionName() {
+    def props = readVersionFile()
+    def currentVersion = props.getProperty('versionName', '1.0.0')
+    
+    // 解析版本号并递增修订号
+    def parts = currentVersion.tokenize('.')
+    def major = parts[0] as int
+    def minor = parts.size() > 1 ? parts[1] as int : 0
+    def patch = parts.size() > 2 ? parts[2] as int : 0
+    
+    // 递增修订号
+    patch++
+    def newVersionName = "${major}.${minor}.${patch}"
+    
+    // 更新版本名称并保存
+    props.setProperty('versionName', newVersionName)
+    writeVersionFile(props)
+    
+    return newVersionName
+}
+
+// 获取当前版本名称
+def getCurrentVersionName() {
+    def props = readVersionFile()
+    return props.getProperty('versionName', '1.0.0')
+}
+
+// 获取当前版本号（从versionName生成）
+def getCurrentVersionCode() {
+    return generateVersionCode(getCurrentVersionName())
+}
+
+task updateVersion {
+    doLast {
+        def newVersionName = getNextVersionName()
+        def newVersionCode = generateVersionCode(newVersionName)
+        println "更新版本信息: versionName=${newVersionName} (自动生成versionCode=${newVersionCode})"
+    }
+}
+
+task showCurrentVersion {
+    doLast {
+        def versionName = getCurrentVersionName()
+        def versionCode = generateVersionCode(versionName)
+        println "当前版本信息: versionName=${versionName}, versionCode=${versionCode}"
+    }
+}
+
 android {
     namespace 'com.imagefixer.app'
     compileSdkVersion 33
 
     defaultConfig {
         applicationId "com.imagefixer.app"
-        minSdkVersion 21
-        targetSdkVersion 33
-        versionCode 1
-        versionName "1.0"
+        minSdk 21
+        targetSdk 33
+        versionName getNextVersionName()
+        versionCode generateVersionCode(versionName)
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -21,6 +114,26 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        debug {
+            // debug特定配置
+        }
+    }
+    
+    // 在android块内直接配置所有变体的输出文件名
+    // Android Studio和命令行构建默认都使用相同的输出路径：${project.buildDir}/outputs/apk/${buildType}
+    android.applicationVariants.all {
+        variant ->
+            variant.outputs.all {
+                def buildType = variant.buildType.name
+                def versionName = variant.versionName
+                def date = new Date().format('yyyyMMdd')
+                
+                if (buildType == 'release') {
+                    outputFileName = "ImageFixer-${versionName}-release.apk"
+                } else {
+                    outputFileName = "ImageFixer-${versionName}-${buildType}.apk"
+                }
+            }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8

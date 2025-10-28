@@ -561,13 +561,6 @@ public class ScanService extends Service {
                 if (!isScanning.get())
                     break;
 
-                // 等待200毫秒
-                try {
-                    Thread.sleep(20);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-
                 if (processImageFile(file)) {
                     batchFixedCount++;
                 }
@@ -637,7 +630,8 @@ public class ScanService extends Service {
                             longCurrentModifiedTime,
                             longRealModifyDate,
                             true,
-                            " - " + RealModifyDate.toString() + (isDateFromFileName ? " 【文件名解析】" : "")));
+                            " - " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(RealModifyDate)
+                                    + (isDateFromFileName ? " 【文件名解析】" : "")));
 
                     return isModified;
                 } else {
@@ -673,6 +667,11 @@ public class ScanService extends Service {
      * 返回解析出的 Date 对象；若无法解析则返回 null
      */
     private Date getFileNameDateTime(String fileName) {
+
+        // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
+        long minTimestamp = 0; // 1970-01-01
+        long maxTimestamp = 4102444800000L; // 2100-12-31
+
         if (fileName == null || fileName.isEmpty())
             return null;
 
@@ -680,22 +679,6 @@ public class ScanService extends Service {
         int dotIndex = fileName.lastIndexOf('.');
         if (dotIndex > 0) {
             fileName = fileName.substring(0, dotIndex);
-        }
-
-        // 匹配 IMG_20230101_123045 或 20230101_123045
-        java.util.regex.Pattern p1 = java.util.regex.Pattern.compile("(?:IMG_)?(\\d{8})_(\\d{6})");
-        java.util.regex.Matcher m1 = p1.matcher(fileName);
-        if (m1.find()) {
-            String date = m1.group(1); // 20230101
-            String time = m1.group(2); // 123045
-            return parseExifDateTime(
-                    new StringBuilder()
-                            .append(date, 0, 4).append(':')
-                            .append(date, 4, 6).append(':')
-                            .append(date, 6, 8).append(' ')
-                            .append(time, 0, 2).append(':')
-                            .append(time, 2, 4).append(':')
-                            .append(time, 4, 6).toString());
         }
 
         // 匹配 2023-01-01-12-30-45 或 2023.01.01.12.30.45
@@ -715,8 +698,32 @@ public class ScanService extends Service {
                             .toString());
         }
 
-        // 匹配Unix时间戳格式 (10位秒级或13位毫秒级)
-        java.util.regex.Pattern timestampPattern = java.util.regex.Pattern.compile("^(\\d{10}|\\d{13})$");
+        // 匹配 .2023_02_17 下午9_30 Office Lens (16) 格式
+        java.util.regex.Pattern p4 = java.util.regex.Pattern
+                .compile("\\.(\\d{4})_(\\d{2})_(\\d{2})\\s+([上下午]+)(\\d+)_(\\d+)");
+        java.util.regex.Matcher m4 = p4.matcher(fileName);
+        if (m4.find()) {
+            int hour = Integer.parseInt(m4.group(5));
+            // 处理上午/下午
+            if (m4.group(4).contains("下午") && hour < 12) {
+                hour += 12;
+            } else if (m4.group(4).contains("上午") && hour == 12) {
+                hour = 0;
+            }
+            
+            return parseExifDateTime(
+                    new StringBuilder()
+                            .append(m4.group(1)).append(':') // yyyy
+                            .append(m4.group(2)).append(':') // MM
+                            .append(m4.group(3)).append(' ') // dd
+                            .append(String.format("%02d", hour)).append(':') // HH
+                            .append(m4.group(6)).append(':') // mm
+                            .append("00") // ss
+                            .toString());
+        }
+
+        // 匹配Unix时间戳格式 (10位秒级或13位毫秒级)，支持前后带有非数字字符串
+        java.util.regex.Pattern timestampPattern = java.util.regex.Pattern.compile("[^\\d]*(\\d{10}|\\d{13})[^\\d]*");
         java.util.regex.Matcher timestampMatcher = timestampPattern.matcher(fileName);
         if (timestampMatcher.find()) {
             try {
@@ -730,9 +737,100 @@ public class ScanService extends Service {
                     // 毫秒级时间戳
                     timestamp = Long.parseLong(timestampStr);
                 }
-                return new Date(timestamp);
+
+                // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
+                if (timestamp >= minTimestamp && timestamp <= maxTimestamp) {
+                    return new Date(timestamp);
+                }
             } catch (NumberFormatException e) {
                 // 解析失败，继续尝试其他格式
+            }
+        }
+
+        // 匹配 ***20230101_123045*** 或 ***20230101*** 格式，支持任意前后缀，时间部分可选
+        java.util.regex.Pattern p1 = java.util.regex.Pattern.compile("[^\\d]*(\\d{8})(?:_(\\d{6}))?[^\\d]*",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher m1 = p1.matcher(fileName);
+        if (m1.find()) {
+            String date = m1.group(1); // 20230101
+            String time = m1.group(2); // 123045 或 null（如果时间部分不存在）
+
+            StringBuilder dateTimeBuilder = new StringBuilder()
+                    .append(date, 0, 4).append(':')
+                    .append(date, 4, 6).append(':')
+                    .append(date, 6, 8).append(' ');
+
+            // 如果时间部分存在，则添加时间信息，否则默认为 00:00:00
+            if (time != null) {
+                dateTimeBuilder.append(time, 0, 2).append(':')
+                        .append(time, 2, 4).append(':')
+                        .append(time, 4, 6);
+            } else {
+                dateTimeBuilder.append("00:00:00");
+            }
+            
+            // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
+            long timestamp = parseExifDateTime(dateTimeBuilder.toString()).getTime();
+            if (timestamp >= minTimestamp && timestamp <= maxTimestamp) {
+                return new Date(timestamp);
+            }
+
+        }
+
+        // 匹配 灵活的日期时间格式，支持多种分隔符，时间、秒和毫秒都是可选的
+        // 支持格式示例：2022-06-25_12.13.07.326、2022/06/25 12:13、2022_06_25-12.13.07等
+        java.util.regex.Pattern p3 = java.util.regex.Pattern.compile(
+                "[^\\d]*?(\\d{4})[\\-\\/_\\.](\\d{2})[\\-\\/_\\.](\\d{2})[^\\d]*?(?:(\\d{2})[\\-\\:_\\.](\\d{2})(?:[\\-\\:_\\.](\\d{2})(?:[\\-\\:_\\.](\\d{1,3}))?)?)?[^\\d]*?");
+        java.util.regex.Matcher m3 = p3.matcher(fileName);
+        if (m3.find()) {
+            // 构建日期时间字符串
+            StringBuilder dateTimeStrBuilder = new StringBuilder()
+                    .append(m3.group(1)).append(':') // yyyy
+                    .append(m3.group(2)).append(':') // MM
+                    .append(m3.group(3)).append(' '); // dd
+
+            // 时间部分是可选的
+            String hourGroup = m3.group(4);
+            String minuteGroup = m3.group(5);
+            String secondGroup = m3.group(6);
+            String millisecondGroup = m3.group(7);
+
+            // 如果有时间部分（小时和分钟）
+            if (hourGroup != null && minuteGroup != null) {
+                dateTimeStrBuilder
+                        .append(hourGroup).append(':') // HH
+                        .append(minuteGroup); // mm
+
+                // 秒部分是可选的
+                if (secondGroup != null) {
+                    dateTimeStrBuilder.append(':').append(secondGroup); // ss
+                } else {
+                    dateTimeStrBuilder.append(':').append("00"); // 默认秒为00
+                }
+            } else {
+                // 如果没有时间部分，添加默认时间 00:00:00
+                dateTimeStrBuilder.append("00:00:00");
+            }
+
+            String dateTimeStr = dateTimeStrBuilder.toString();
+            Date date = parseExifDateTime(dateTimeStr);
+
+            if (date != null && millisecondGroup != null) {
+                // 添加毫秒（处理1-3位毫秒）
+                try {
+                    // 确保毫秒是3位数
+                    String paddedMillis = String.format("%3s", millisecondGroup).replace(' ', '0');
+                    int milliseconds = Integer.parseInt(paddedMillis);
+                    return new Date(date.getTime() + milliseconds);
+                } catch (NumberFormatException e) {
+                    // 忽略毫秒部分，返回不带毫秒的时间
+                }
+            }
+
+            // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
+            long timestamp = date.getTime();
+            if (timestamp >= minTimestamp && timestamp <= maxTimestamp) {
+                return date;
             }
         }
 
@@ -878,13 +976,14 @@ public class ScanService extends Service {
     private void showCompletionNotification() {
         // Android 13及以上版本需要检查POST_NOTIFICATIONS权限
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            if (checkSelfPermission(
+                    android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 // 没有通知权限，不发送通知
                 LogUtils.d(TAG, "No POST_NOTIFICATIONS permission, skipping notification");
                 return;
             }
         }
-        
+
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(getString(R.string.notification_scan_completed))
@@ -951,7 +1050,7 @@ public class ScanService extends Service {
 
         // 将统一的文件信息列表作为可序列化对象传递
         intent.putExtra(EXTRA_SCANNED_FILES_LIST, new ArrayList<>(imageFileList));
-        
+
         // 设置包名以避免UnsafeImplicitIntentLaunch错误
         intent.setPackage(getPackageName());
         sendBroadcast(intent);
