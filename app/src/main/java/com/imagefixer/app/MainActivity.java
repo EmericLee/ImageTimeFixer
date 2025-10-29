@@ -30,8 +30,10 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import java.io.Serializable;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -55,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView textViewFixedCount;
     private ProgressBar progressBar;
     private Button buttonLog; // 用于显示日志的按钮
+    private CheckBox checkBoxDryRun; // 用于启用dryrun模式的复选框
 
     private StringBuilder strLogBuilder = new StringBuilder(); // 用于存储日志内容
 
@@ -94,8 +97,12 @@ public class MainActivity extends AppCompatActivity {
                 scanError(errorMessage);
             } else if (ScanService.ACTION_FILE_INFO_UPDATE.equals(action)) {
                 // 处理文件信息更新广播 - 批量处理
-                ArrayList<ScanService.ScanFileInfo> fileInfos = (ArrayList<ScanService.ScanFileInfo>) intent
-                        .getSerializableExtra(ScanService.EXTRA_SCANNED_FILES_LIST);
+                // 使用泛型转换，避免直接使用过时的getSerializableExtra
+                ArrayList<ScanService.ScanFileInfo> fileInfos = null;
+                Serializable extra = intent.getSerializableExtra(ScanService.EXTRA_SCANNED_FILES_LIST);
+                if (extra instanceof ArrayList) {
+                    fileInfos = (ArrayList<ScanService.ScanFileInfo>) extra;
+                }
                 if (fileInfos != null && !fileInfos.isEmpty()) {
                     updateFileListBatch(fileInfos);
                 }
@@ -166,6 +173,7 @@ public class MainActivity extends AppCompatActivity {
         textViewFixedCount = findViewById(R.id.textView_fixed_count);
         progressBar = findViewById(R.id.progressBar);
         buttonLog = findViewById(R.id.button_log); // 初始化日志按钮
+        checkBoxDryRun = findViewById(R.id.checkBox_dryrun); // 初始化dryrun复选框
 
         scrollViewFiles = findViewById(R.id.scrollView_files);
         textViewFileList = findViewById(R.id.textView_file_list);
@@ -223,6 +231,8 @@ public class MainActivity extends AppCompatActivity {
         fullScreenTextView.setSingleLine(false); // 允许多行显示
         fullScreenTextView.setEllipsize(null); // 不截断文本
         fullScreenTextView.setMovementMethod(null); // 移除任何可能干扰的移动方法
+        fullScreenTextView.setTextIsSelectable(true); // 允许文本选择
+        fullScreenTextView.setLongClickable(true); // 允许长按选择
 
         // 设置背景色
         // fullScreenScrollView.setBackgroundColor(getResources().getColor(android.R.color.background_dark));
@@ -328,6 +338,8 @@ public class MainActivity extends AppCompatActivity {
 
         // 启动扫描服务
         Intent intent = new Intent(this, ScanService.class);
+        // 传递dryrun模式参数
+        intent.putExtra(ScanService.EXTRA_DRY_RUN, checkBoxDryRun.isChecked());
         startService(intent);
     }
 
@@ -374,11 +386,13 @@ public class MainActivity extends AppCompatActivity {
             // progressBar.setIndeterminate(true);
             buttonScan.setVisibility(View.GONE);
             buttonStop.setVisibility(View.VISIBLE);
+            checkBoxDryRun.setEnabled(false); // 扫描时禁用复选框
             // scrollViewFiles.setVisibility(View.VISIBLE);
         } else {
             // progressBar.setVisibility(View.GONE);
             buttonScan.setVisibility(View.VISIBLE);
             buttonStop.setVisibility(View.GONE);
+            checkBoxDryRun.setEnabled(true); // 扫描结束时启用复选框
         }
     }
 

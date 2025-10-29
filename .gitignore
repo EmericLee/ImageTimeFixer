@@ -10,6 +10,8 @@
 
 # Generated files
 build/
+release/
+local_data/
 .idea/
 .gradle/
 local.properties
@@ -56,4 +58,3 @@ Thumbs.db
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-app/release/output-metadata.json

@@ -18,9 +18,17 @@ public class VersionUtils {
      */
     public static String getVersionName(Context context) {
         try {
-            PackageInfo packageInfo = context.getPackageManager().getPackageInfo(
-                    context.getPackageName(), 0);
-            return packageInfo.versionName;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ 使用新的API
+                PackageInfo packageInfo = context.getPackageManager().getPackageInfo(
+                        context.getPackageName(), PackageManager.PackageInfoFlags.of(0));
+                return packageInfo.versionName;
+            } else {
+                // 旧版本
+                PackageInfo packageInfo = context.getPackageManager().getPackageInfo(
+                        context.getPackageName(), 0);
+                return packageInfo.versionName;
+            }
         } catch (PackageManager.NameNotFoundException e) {
             Log.e(TAG, "获取版本名称失败", e);
             return "未知版本";
@@ -34,9 +42,29 @@ public class VersionUtils {
      */
     public static int getVersionCode(Context context) {
         try {
-            PackageInfo packageInfo = context.getPackageManager().getPackageInfo(
-                    context.getPackageName(), 0);
-            return packageInfo.versionCode;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+ 使用新的API
+                PackageInfo packageInfo = context.getPackageManager().getPackageInfo(
+                        context.getPackageName(), PackageManager.PackageInfoFlags.of(0));
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    // Android 9.0+ 使用长整型版本号
+                    return (int) packageInfo.getLongVersionCode();
+                } else {
+                    // 旧版本
+                    return packageInfo.versionCode;
+                }
+            } else {
+                // 旧版本
+                PackageInfo packageInfo = context.getPackageManager().getPackageInfo(
+                        context.getPackageName(), 0);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    // Android 9.0+ 使用长整型版本号
+                    return (int) packageInfo.getLongVersionCode();
+                } else {
+                    // 旧版本
+                    return packageInfo.versionCode;
+                }
+            }
         } catch (PackageManager.NameNotFoundException e) {
             Log.e(TAG, "获取版本号失败", e);
             return 0;

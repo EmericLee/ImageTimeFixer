@@ -106,15 +106,13 @@ public class LogUtils {
      * 发送日志广播
      */
     private static void sendLogBroadcast(String message, String level) {
-        if (!isInitialized || context == null) {
-            return; // 上下文未初始化，无法发送广播
+        if (isInitialized && context != null) {
+            Intent intent = new Intent(ACTION_LOG_MESSAGE);
+            intent.putExtra(EXTRA_LOG_MESSAGE, message);
+            intent.putExtra(EXTRA_LOG_LEVEL, level);
+            // 设置包名以避免UnsafeImplicitIntentLaunch错误，确保只发送到当前应用内的接收器
+            intent.setPackage(context.getPackageName());
+            context.sendBroadcast(intent);
         }
-        
-        Intent intent = new Intent(ACTION_LOG_MESSAGE);
-        intent.putExtra(EXTRA_LOG_MESSAGE, message);
-        intent.putExtra(EXTRA_LOG_LEVEL, level);
-        // 设置包名以避免UnsafeImplicitIntentLaunch错误，确保只发送到当前应用内的接收器
-        intent.setPackage(context.getPackageName());
-        context.sendBroadcast(intent);
     }
 }

@@ -32,6 +32,7 @@ import android.os.Message;
 import android.os.Process;
 import android.os.SystemClock;
 import com.imagefixer.app.utils.LogUtils;
+import com.imagefixer.app.utils.FileNameDateTimeParser;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -74,6 +75,8 @@ public class ScanService extends Service {
     private static final long FILE_INFO_BROADCAST_INTERVAL_MS = 1000; // 文件信息广播间隔（毫秒）
 
     // 广播动作
+    // Dryrun模式参数
+    public static final String EXTRA_DRY_RUN = "dry_run";
     public static final String ACTION_SCAN_PROGRESS = "com.imagefixer.app.ACTION_SCAN_PROGRESS";
     public static final String ACTION_SCAN_COMPLETED = "com.imagefixer.app.ACTION_SCAN_COMPLETED";
     public static final String ACTION_SCAN_ERROR = "com.imagefixer.app.ACTION_SCAN_ERROR";
@@ -106,6 +109,7 @@ public class ScanService extends Service {
     private boolean fileInfoBroadcastPending = false; // 是否有待处理的文件信息广播
 
     private AtomicBoolean isScanning = new AtomicBoolean(false);
+    private boolean isDryRun = false;
     private AtomicInteger totalCount = new AtomicInteger(0); // 文件总数计数器
     private AtomicInteger scannedCount = new AtomicInteger(0); // 已扫描文件计数
     private AtomicInteger fixedCount = new AtomicInteger(0); // 已修正文件计数
@@ -297,6 +301,12 @@ public class ScanService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         // Android 10及以下版本不需要设置前台服务类型
+        if (intent != null) {
+            // 检查是否启用dryrun模式
+            isDryRun = intent.getBooleanExtra(EXTRA_DRY_RUN, false);
+            LogUtils.d(TAG, "启动扫描服务，dryrun模式: " + isDryRun);
+        }
+        
         if (!isScanning.getAndSet(true)) {
             // 重置计数器
             scannedCount.set(0);
@@ -341,8 +351,14 @@ public class ScanService extends Service {
         // 清理资源
         cleanupResources();
 
-        // 取消前台通知
-        stopForeground(true);
+        // 取消前台通知，使用兼容性代码
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            // Android 8.0+ 使用新的API
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            // 旧版本使用布尔参数
+            stopForeground(true);
+        }
 
         LogUtils.d(TAG, "ScanService已销毁");
     }
@@ -616,13 +632,16 @@ public class ScanService extends Service {
                 // 如果EXIF时间与当前修改时间不同，则更新文件时间
                 if (Math.abs(longRealModifyDate - longCurrentModifiedTime) > 1000) { // 允许1秒的误差
                     // 更新文件修改时间
-                    imageFile.setLastModified(longRealModifyDate);
+                    if (!isDryRun) {
+                        imageFile.setLastModified(longRealModifyDate);
+                    }
                     isModified = true;
                     // @todo 检查文件创建时间，如果晚于修改时间，则设置文件创建时间为修改时间
 
                     // 文件已修正，日志记录
                     LogUtils.d(TAG, "已修正 " + (isDateFromFileName ? "[文件名]: " : ": ") + " -> "
-                            + imageFile.getAbsolutePath() + " -> " + RealModifyDate);
+                            + imageFile.getAbsolutePath() + " -> " + RealModifyDate
+                            + (isDryRun ? " [DRYRUN模式]" : ""));
 
                     // 发送文件信息广播 @todo 考虑移除sendFileInfoBroadcast， 能否通过imageFileList直接更新
                     sendFileInfoBroadcast(new ScanFileInfo(
@@ -631,7 +650,8 @@ public class ScanService extends Service {
                             longRealModifyDate,
                             true,
                             " - " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(RealModifyDate)
-                                    + (isDateFromFileName ? " 【文件名解析】" : "")));
+                                    + (isDateFromFileName ? " 【文件名解析】" : "")
+                                    + (isDryRun ? " 【DRYRUN模式】" : "")));
 
                     return isModified;
                 } else {
@@ -666,175 +686,11 @@ public class ScanService extends Service {
      * 5) 1748512965775.jpg (Unix时间戳格式)
      * 返回解析出的 Date 对象；若无法解析则返回 null
      */
+    // 使用FileNameDateTimeParser类处理文件名解析
+    private FileNameDateTimeParser fileNameParser = new FileNameDateTimeParser();
+    
     private Date getFileNameDateTime(String fileName) {
-
-        // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
-        long minTimestamp = 0; // 1970-01-01
-        long maxTimestamp = 4102444800000L; // 2100-12-31
-
-        if (fileName == null || fileName.isEmpty())
-            return null;
-
-        // 去掉扩展名
-        int dotIndex = fileName.lastIndexOf('.');
-        if (dotIndex > 0) {
-            fileName = fileName.substring(0, dotIndex);
-        }
-
-        // 匹配 2023-01-01-12-30-45 或 2023.01.01.12.30.45
-        java.util.regex.Pattern p2 = java.util.regex.Pattern
-                .compile(
-                        "(\\d{4})[\\.\\-](\\d{2})[\\.\\-](\\d{2})[\\.\\-](\\d{2})[\\.\\-](\\d{2})[\\.\\-](\\d{2})");
-        java.util.regex.Matcher m2 = p2.matcher(fileName);
-        if (m2.find()) {
-            return parseExifDateTime(
-                    new StringBuilder()
-                            .append(m2.group(1)).append(':') // yyyy
-                            .append(m2.group(2)).append(':') // MM
-                            .append(m2.group(3)).append(' ') // dd
-                            .append(m2.group(4)).append(':') // HH
-                            .append(m2.group(5)).append(':') // mm
-                            .append(m2.group(6)) // ss
-                            .toString());
-        }
-
-        // 匹配 .2023_02_17 下午9_30 Office Lens (16) 格式
-        java.util.regex.Pattern p4 = java.util.regex.Pattern
-                .compile("\\.(\\d{4})_(\\d{2})_(\\d{2})\\s+([上下午]+)(\\d+)_(\\d+)");
-        java.util.regex.Matcher m4 = p4.matcher(fileName);
-        if (m4.find()) {
-            int hour = Integer.parseInt(m4.group(5));
-            // 处理上午/下午
-            if (m4.group(4).contains("下午") && hour < 12) {
-                hour += 12;
-            } else if (m4.group(4).contains("上午") && hour == 12) {
-                hour = 0;
-            }
-            
-            return parseExifDateTime(
-                    new StringBuilder()
-                            .append(m4.group(1)).append(':') // yyyy
-                            .append(m4.group(2)).append(':') // MM
-                            .append(m4.group(3)).append(' ') // dd
-                            .append(String.format("%02d", hour)).append(':') // HH
-                            .append(m4.group(6)).append(':') // mm
-                            .append("00") // ss
-                            .toString());
-        }
-
-        // 匹配Unix时间戳格式 (10位秒级或13位毫秒级)，支持前后带有非数字字符串
-        java.util.regex.Pattern timestampPattern = java.util.regex.Pattern.compile("[^\\d]*(\\d{10}|\\d{13})[^\\d]*");
-        java.util.regex.Matcher timestampMatcher = timestampPattern.matcher(fileName);
-        if (timestampMatcher.find()) {
-            try {
-                String timestampStr = timestampMatcher.group(1);
-                long timestamp;
-                // 判断是秒级还是毫秒级时间戳
-                if (timestampStr.length() == 10) {
-                    // 秒级时间戳，转换为毫秒
-                    timestamp = Long.parseLong(timestampStr) * 1000;
-                } else {
-                    // 毫秒级时间戳
-                    timestamp = Long.parseLong(timestampStr);
-                }
-
-                // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
-                if (timestamp >= minTimestamp && timestamp <= maxTimestamp) {
-                    return new Date(timestamp);
-                }
-            } catch (NumberFormatException e) {
-                // 解析失败，继续尝试其他格式
-            }
-        }
-
-        // 匹配 ***20230101_123045*** 或 ***20230101*** 格式，支持任意前后缀，时间部分可选
-        java.util.regex.Pattern p1 = java.util.regex.Pattern.compile("[^\\d]*(\\d{8})(?:_(\\d{6}))?[^\\d]*",
-                java.util.regex.Pattern.CASE_INSENSITIVE);
-        java.util.regex.Matcher m1 = p1.matcher(fileName);
-        if (m1.find()) {
-            String date = m1.group(1); // 20230101
-            String time = m1.group(2); // 123045 或 null（如果时间部分不存在）
-
-            StringBuilder dateTimeBuilder = new StringBuilder()
-                    .append(date, 0, 4).append(':')
-                    .append(date, 4, 6).append(':')
-                    .append(date, 6, 8).append(' ');
-
-            // 如果时间部分存在，则添加时间信息，否则默认为 00:00:00
-            if (time != null) {
-                dateTimeBuilder.append(time, 0, 2).append(':')
-                        .append(time, 2, 4).append(':')
-                        .append(time, 4, 6);
-            } else {
-                dateTimeBuilder.append("00:00:00");
-            }
-            
-            // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
-            long timestamp = parseExifDateTime(dateTimeBuilder.toString()).getTime();
-            if (timestamp >= minTimestamp && timestamp <= maxTimestamp) {
-                return new Date(timestamp);
-            }
-
-        }
-
-        // 匹配 灵活的日期时间格式，支持多种分隔符，时间、秒和毫秒都是可选的
-        // 支持格式示例：2022-06-25_12.13.07.326、2022/06/25 12:13、2022_06_25-12.13.07等
-        java.util.regex.Pattern p3 = java.util.regex.Pattern.compile(
-                "[^\\d]*?(\\d{4})[\\-\\/_\\.](\\d{2})[\\-\\/_\\.](\\d{2})[^\\d]*?(?:(\\d{2})[\\-\\:_\\.](\\d{2})(?:[\\-\\:_\\.](\\d{2})(?:[\\-\\:_\\.](\\d{1,3}))?)?)?[^\\d]*?");
-        java.util.regex.Matcher m3 = p3.matcher(fileName);
-        if (m3.find()) {
-            // 构建日期时间字符串
-            StringBuilder dateTimeStrBuilder = new StringBuilder()
-                    .append(m3.group(1)).append(':') // yyyy
-                    .append(m3.group(2)).append(':') // MM
-                    .append(m3.group(3)).append(' '); // dd
-
-            // 时间部分是可选的
-            String hourGroup = m3.group(4);
-            String minuteGroup = m3.group(5);
-            String secondGroup = m3.group(6);
-            String millisecondGroup = m3.group(7);
-
-            // 如果有时间部分（小时和分钟）
-            if (hourGroup != null && minuteGroup != null) {
-                dateTimeStrBuilder
-                        .append(hourGroup).append(':') // HH
-                        .append(minuteGroup); // mm
-
-                // 秒部分是可选的
-                if (secondGroup != null) {
-                    dateTimeStrBuilder.append(':').append(secondGroup); // ss
-                } else {
-                    dateTimeStrBuilder.append(':').append("00"); // 默认秒为00
-                }
-            } else {
-                // 如果没有时间部分，添加默认时间 00:00:00
-                dateTimeStrBuilder.append("00:00:00");
-            }
-
-            String dateTimeStr = dateTimeStrBuilder.toString();
-            Date date = parseExifDateTime(dateTimeStr);
-
-            if (date != null && millisecondGroup != null) {
-                // 添加毫秒（处理1-3位毫秒）
-                try {
-                    // 确保毫秒是3位数
-                    String paddedMillis = String.format("%3s", millisecondGroup).replace(' ', '0');
-                    int milliseconds = Integer.parseInt(paddedMillis);
-                    return new Date(date.getTime() + milliseconds);
-                } catch (NumberFormatException e) {
-                    // 忽略毫秒部分，返回不带毫秒的时间
-                }
-            }
-
-            // 验证时间戳的合理性（1970-01-01 到 2100-12-31）
-            long timestamp = date.getTime();
-            if (timestamp >= minTimestamp && timestamp <= maxTimestamp) {
-                return date;
-            }
-        }
-
-        return null;
+        return fileNameParser.getFileNameDateTime(fileName);
     }
 
     private void startScan() {
@@ -866,19 +722,11 @@ public class ScanService extends Service {
         if (dateString == null || dateString.isEmpty()) {
             dateString = exifInterface.getAttribute(ExifInterface.TAG_DATETIME_DIGITIZED);
         }
-        return dateString != null && !dateString.isEmpty() ? parseExifDateTime(dateString) : null;
+        return dateString != null && !dateString.isEmpty() ? fileNameParser.parseExifDateTime(dateString) : null;
     }
 
-    private Date parseExifDateTime(String dateString) {
-        try {
-            // EXIF日期格式: "2023:01:01 12:30:45"
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.getDefault());
-            return sdf.parse(dateString);
-        } catch (ParseException e) {
-            LogUtils.w(TAG, "解析日期时间失败: " + dateString, e);
-            return null;
-        }
-    }
+    // parseExifDateTime方法已移至FileNameDateTimeParser类
+
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

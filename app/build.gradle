@@ -121,7 +121,7 @@ android {
     
     // 在android块内直接配置所有变体的输出文件名
     // Android Studio和命令行构建默认都使用相同的输出路径：${project.buildDir}/outputs/apk/${buildType}
-    android.applicationVariants.all {
+    applicationVariants.all {
         variant ->
             variant.outputs.all {
                 def buildType = variant.buildType.name
@@ -136,8 +136,8 @@ android {
             }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 }
 
